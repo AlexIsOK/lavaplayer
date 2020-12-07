@@ -1,5 +1,54 @@
 # Change Log
 
+## [1.3.63] -- 2020-12-01
+### Added
+- Added option to override logging handler for errors with large payloads.
+
+### Removed
+- Removed Mixer implementation, source manager class kept for now to not cause a breaking change.
+
+### Changed
+- YouTube playlist loader logs response content if content type is not JSON.
+
+## [1.3.62] -- 2020-11-30
+### Changed
+- Status code 429 from YouTube now causes an exception which explains YouTube block.
+- GC logging no longer warns about pauses shorter than 200ms.
+
+## [1.3.61] -- 2020-11-19
+### Fixed
+- Fixed age restricted YouTube videos (PR 559 by Walkyst).
+- Fixed YouTube search results using current locale language (PR 557 by madeyoga).
+
+## [1.3.60] -- 2020-11-11
+### Fixed
+- Fixed removing/adding player listeners failing when done from within listener callback.
+
+## [1.3.59] -- 2020-11-07
+### Fixed
+- Fixed YouTube playlist pagination being broken (PR 552 by Xavinlol).
+
+## [1.3.58] -- 2020-11-06
+### Fixed
+- Fixed AAC streams possibly detected as MP3 even if their mime type is set to audio/aac.
+
+## [1.3.57] -- 2020-11-06
+### Added
+- Added support for SoundCloud tracks which only have MP3 HLS format available.
+
+## [1.3.56] -- 2020-11-05
+### Fixed
+- Fixed some YouTube live streams caused by MP4 audio data being skipped in MP4 with no sidx.
+
+## [1.3.55] -- 2020-10-31
+### Fixed
+- Fixed no exception thrown when native lib loading fails.
+- Fixed seeking on MKV files with cues in the end of the file.
+
+## [1.3.54] -- 2020-10-29
+### Fixed
+- Fixed YouTube VOD duration set to unknown.
+
 ## [1.3.53] -- 2020-10-26
 ### Fixed
 - Fixed Bandcamp track and album loading which broke due to url changes (PR 527 by Walkyst).

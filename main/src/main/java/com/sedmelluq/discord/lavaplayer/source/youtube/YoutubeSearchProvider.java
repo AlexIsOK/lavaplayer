@@ -59,13 +59,13 @@ public class YoutubeSearchProvider implements YoutubeSearchResultLoader {
     log.debug("Performing a search with query {}", query);
 
     try (HttpInterface httpInterface = httpInterfaceManager.getInterface()) {
-      URI url = new URIBuilder("https://www.youtube.com/results").addParameter("search_query", query).build();
+      URI url = new URIBuilder("https://www.youtube.com/results")
+          .addParameter("search_query", query)
+          .addParameter("hl", "en")
+          .addParameter("persist_hl", "1").build();
 
       try (CloseableHttpResponse response = httpInterface.execute(new HttpGet(url))) {
-        int statusCode = response.getStatusLine().getStatusCode();
-        if (!HttpClientTools.isSuccessWithContent(statusCode)) {
-          throw new IOException("Invalid status code for search response: " + statusCode);
-        }
+        HttpClientTools.assertSuccessWithContent(response, "search response");
 
         Document document = Jsoup.parse(response.getEntity().getContent(), StandardCharsets.UTF_8.name(), "");
         return extractSearchResults(document, query, trackFactory);
@@ -153,16 +153,24 @@ public class YoutubeSearchProvider implements YoutubeSearchResultLoader {
   }
 
   private AudioTrack extractPolymerData(JsonBrowser json, Function<AudioTrackInfo, AudioTrack> trackFactory) {
-    json = json.get("videoRenderer");
-    if (json.isNull()) return null; // Ignore everything which is not a track
+    JsonBrowser renderer = json.get("videoRenderer");
 
-    String title = json.get("title").get("runs").index(0).get("text").text();
-    String author = json.get("ownerText").get("runs").index(0).get("text").text();
-    if (json.get("lengthText").isNull()) {
-      return null; // Ignore if the video is a live stream
+    if (renderer.isNull()) {
+      // Not a track, ignore
+      return null;
     }
-    long duration = DataFormatTools.durationTextToMillis(json.get("lengthText").get("simpleText").text());
-    String videoId = json.get("videoId").text();
+
+    String title = renderer.get("title").get("runs").index(0).get("text").text();
+    String author = renderer.get("ownerText").get("runs").index(0).get("text").text();
+    String lengthText = renderer.get("lengthText").get("simpleText").text();
+
+    if (lengthText == null) {
+      // Unknown length means this is a livestream, ignore
+      return null;
+    }
+
+    long duration = DataFormatTools.durationTextToMillis(lengthText);
+    String videoId = renderer.get("videoId").text();
 
     AudioTrackInfo info = new AudioTrackInfo(title, author, duration, videoId, false,
         WATCH_URL_PREFIX + videoId);

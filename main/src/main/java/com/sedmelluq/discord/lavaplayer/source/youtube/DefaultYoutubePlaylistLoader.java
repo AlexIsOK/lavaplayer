@@ -1,5 +1,6 @@
 package com.sedmelluq.discord.lavaplayer.source.youtube;
 
+import com.sedmelluq.discord.lavaplayer.tools.ExceptionTools;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.JsonBrowser;
 import com.sedmelluq.discord.lavaplayer.tools.Units;
@@ -16,10 +17,15 @@ import java.util.Optional;
 import java.util.function.Function;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.util.EntityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.COMMON;
 
 public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
+  private static final Logger log = LoggerFactory.getLogger(DefaultYoutubePlaylistLoader.class);
+
   private volatile int playlistPageCount = 6;
 
   @Override
@@ -34,13 +40,10 @@ public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
     HttpGet request = new HttpGet(getPlaylistUrl(playlistId) + "&pbj=1&hl=en");
 
     try (CloseableHttpResponse response = httpInterface.execute(request)) {
-      int statusCode = response.getStatusLine().getStatusCode();
-      if (!HttpClientTools.isSuccessWithContent(statusCode)) {
-        throw new IOException("Invalid status code for playlist response: " + statusCode);
-      }
+      HttpClientTools.assertSuccessWithContent(response, "playlist response");
+      HttpClientTools.assertJsonContentType(response);
 
       JsonBrowser json = JsonBrowser.parse(response.getEntity().getContent());
-
       return buildPlaylist(httpInterface, json, selectedVideoId, trackFactory);
     } catch (IOException e) {
       throw new RuntimeException(e);
@@ -85,7 +88,8 @@ public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
         .get("itemSectionRenderer")
         .get("contents")
         .index(0)
-        .get("playlistVideoListRenderer");
+        .get("playlistVideoListRenderer")
+        .get("contents");
 
     List<AudioTrack> tracks = new ArrayList<>();
     String loadMoreUrl = extractPlaylistTracks(playlistVideoList, tracks, trackFactory);
@@ -95,10 +99,7 @@ public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
     // Also load the next pages, each result gives us a JSON with separate values for list html and next page loader html
     while (loadMoreUrl != null && ++loadCount < pageCount) {
       try (CloseableHttpResponse response = httpInterface.execute(new HttpGet("https://www.youtube.com" + loadMoreUrl))) {
-        int statusCode = response.getStatusLine().getStatusCode();
-        if (!HttpClientTools.isSuccessWithContent(statusCode)) {
-          throw new IOException("Invalid status code for playlist response: " + statusCode);
-        }
+        HttpClientTools.assertSuccessWithContent(response, "playlist response");
 
         JsonBrowser continuationJson = JsonBrowser.parse(response.getEntity().getContent());
 
@@ -106,6 +107,15 @@ public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
             .get("response")
             .get("continuationContents")
             .get("playlistVideoListContinuation");
+
+        if (playlistVideoListPage.isNull()) {
+          playlistVideoListPage = continuationJson.index(1)
+              .get("response")
+              .get("onResponseReceivedActions")
+              .index(0)
+              .get("appendContinuationItemsAction")
+              .get("continuationItems");
+        }
 
         loadMoreUrl = extractPlaylistTracks(playlistVideoListPage, tracks, trackFactory);
       }
@@ -129,11 +139,10 @@ public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
   private String extractPlaylistTracks(JsonBrowser playlistVideoList, List<AudioTrack> tracks,
                                        Function<AudioTrackInfo, AudioTrack> trackFactory) {
 
-    JsonBrowser trackArray = playlistVideoList.get("contents");
+    if (playlistVideoList.isNull()) return null;
 
-    if (trackArray.isNull()) return null;
-
-    for (JsonBrowser track : trackArray.values()) {
+    final List<JsonBrowser> playlistTrackEntries = playlistVideoList.values();
+    for (JsonBrowser track : playlistTrackEntries) {
       JsonBrowser item = track.get("playlistVideoRenderer");
 
       JsonBrowser shortBylineText = item.get("shortBylineText");
@@ -158,8 +167,17 @@ public class DefaultYoutubePlaylistLoader implements YoutubePlaylistLoader {
 
     JsonBrowser continuations = playlistVideoList.get("continuations");
 
+    String continuationsToken;
     if (!continuations.isNull()) {
-      String continuationsToken = continuations.index(0).get("nextContinuationData").get("continuation").text();
+      continuationsToken = continuations.index(0).get("nextContinuationData").get("continuation").text();
+    } else {
+      continuations = playlistTrackEntries
+          .get(playlistTrackEntries.size() -1)
+          .get("continuationItemRenderer");
+      continuationsToken = continuations.get("continuationEndpoint").get("continuationCommand").get("token").text();
+    }
+
+    if (continuationsToken != null && !continuationsToken.isEmpty()) {
       return "/browse_ajax?continuation=" + continuationsToken + "&ctoken=" + continuationsToken + "&hl=en";
     }
 

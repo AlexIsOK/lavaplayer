@@ -2,9 +2,10 @@ package com.sedmelluq.discord.lavaplayer.source.youtube;
 
 import com.sedmelluq.discord.lavaplayer.source.youtube.format.LegacyAdaptiveFormatsExtractor;
 import com.sedmelluq.discord.lavaplayer.source.youtube.format.LegacyDashMpdFormatsExtractor;
-import com.sedmelluq.discord.lavaplayer.source.youtube.format.LegacyStreamMapFormatsExtractors;
+import com.sedmelluq.discord.lavaplayer.source.youtube.format.LegacyStreamMapFormatsExtractor;
 import com.sedmelluq.discord.lavaplayer.source.youtube.format.StreamingDataFormatsExtractor;
 import com.sedmelluq.discord.lavaplayer.source.youtube.format.YoutubeTrackFormatExtractor;
+import com.sedmelluq.discord.lavaplayer.tools.ExceptionTools;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.JsonBrowser;
 import com.sedmelluq.discord.lavaplayer.tools.Units;
@@ -25,7 +26,7 @@ public class DefaultYoutubeTrackDetails implements YoutubeTrackDetails {
       new LegacyAdaptiveFormatsExtractor(),
       new StreamingDataFormatsExtractor(),
       new LegacyDashMpdFormatsExtractor(),
-      new LegacyStreamMapFormatsExtractors()
+      new LegacyStreamMapFormatsExtractor()
   };
 
   private final String videoId;
@@ -46,7 +47,7 @@ public class DefaultYoutubeTrackDetails implements YoutubeTrackDetails {
     try {
       return loadTrackFormats(httpInterface, signatureResolver);
     } catch (Exception e) {
-      throw new RuntimeException(e);
+      throw ExceptionTools.toRuntimeException(e);
     }
   }
 
@@ -136,7 +137,7 @@ public class DefaultYoutubeTrackDetails implements YoutubeTrackDetails {
 
       return new TemporalInfo(
           isActiveStream,
-          wasLiveStream || durationValue == 0 ? DURATION_MS_UNKNOWN : Units.secondsToMillis(durationValue)
+          durationValue == 0 ? DURATION_MS_UNKNOWN : Units.secondsToMillis(durationValue)
       );
     }
   }
